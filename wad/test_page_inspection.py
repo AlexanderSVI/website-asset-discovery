@@ -190,6 +190,7 @@ class StaticInspectionTests(unittest.TestCase):
         cls.cert, key = certificate(cls.folder)
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Pages)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(cls.cert, key)
         cls.server.socket = ctx.wrap_socket(cls.server.socket, server_side=True)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
