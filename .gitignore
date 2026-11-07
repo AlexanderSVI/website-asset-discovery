@@ -1,0 +1,28 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.*.example
+!.env.*.template
+
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# WAD run output and temporary Executor work directories
+WAD_Output/
+runtime/executor/candidate-*/
+
+# OS and editor temporary files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+~$*
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
