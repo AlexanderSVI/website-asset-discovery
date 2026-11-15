@@ -554,6 +554,51 @@ class Tests(unittest.TestCase):
         self.assertEqual(recover_prefix(self.folder/"absent",self.folder/"absent-meta")["confirmed_bytes"],0)
         emit("synthetic_recovery",cases=len(cases)+1,result="PASS",power_loss_durability="not claimed")
 
+    @unittest.skipUnless(sys.platform == "darwin", "uses macOS kqueue")
+    def test_macos_parent_crash_stops_worker(self):
+        from contextlib import closing
+        import os
+        import select
+        import signal
+
+        ctx = multiprocessing.get_context("spawn")
+        parent, child = ctx.Pipe()
+        controller = ctx.Process(target=crash_controller, args=(child, self.base, str(self.folder)))
+        controller.start()
+        child.close()
+        worker_pid = None
+        worker_exited = False
+        try:
+            parent.send("go")
+            self.assertTrue(parent.poll(15))
+            worker_pid = parent.recv()["pid"]
+            with closing(select.kqueue()) as queue:
+                event = select.kevent(worker_pid, filter=select.KQ_FILTER_PROC,
+                                      flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                                      fflags=select.KQ_NOTE_EXIT)
+                queue.control([event], 0)
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and not COUNTS.get("/hang/parent-crash"):
+                    time.sleep(.02)
+                self.assertEqual(COUNTS.get("/hang/parent-crash"), 1)
+                controller.kill()
+                controller.join(3)
+                self.assertFalse(controller.is_alive())
+                worker_exited = bool(queue.control(None, 1, 3))
+                self.assertTrue(worker_exited, "worker survived parent crash")
+        finally:
+            if controller.is_alive():
+                controller.kill()
+                controller.join(3)
+            if worker_pid is not None and not worker_exited:
+                try:
+                    os.kill(worker_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            parent.close()
+            controller.close()
+
+    @unittest.skipUnless(sys.platform == "win32", "uses Windows Job Objects")
     def test_23_parent_crash_external_supervisor(self):
         ctx=multiprocessing.get_context("spawn")
         parent,child=ctx.Pipe()

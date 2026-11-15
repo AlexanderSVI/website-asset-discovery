@@ -1,6 +1,6 @@
-# WAD v0.1.1 — Website Asset Discovery
+# WAD v0.1.2 — Website Asset Discovery
 
-**Runtime support: Windows only.** WAD is an installable Agent Skill for creating a bounded, static inventory of an existing website before modernization. The current Executor uses the Windows Job Object API and does not run on macOS or Linux.
+**Runtime support: Windows and macOS.** WAD is an installable Agent Skill for creating a bounded, static inventory of an existing website before modernization. The Windows Executor uses Job Objects; the macOS adaptation uses a parent-process watchdog. Linux is not supported.
 
 WAD helps answer: **What was found on the website, where is it used, and what evidence supports the result?** It treats an asset as a discoverable website element that may matter to search-engine indexing, visitors, site content, or site functionality. Examples include pages, content blocks, images, documents, navigation, and some functional components.
 
@@ -68,6 +68,24 @@ Install the WAD Skill from https://github.com/AlexanderSVI/website-asset-discove
 
 You may need to start a new Codex session before the Skill appears.
 
+### Codex on macOS
+
+Use Git and CPython 3.11 or later with `venv` and `pip`. Ask Codex:
+
+```text
+Install WAD v0.1.2 from https://github.com/AlexanderSVI/website-asset-discovery.git in my user-level Codex Skills directory. Check out tag v0.1.2, create a Python virtual environment inside the Skill directory, and install requirements-runtime.txt. Do not overwrite an existing installation. Report separately whether Codex discovers the Skill and whether WAD actually runs. If anything is unavailable, stop and explain the issue.
+```
+
+Alternatively, install it in Terminal:
+
+```bash
+mkdir -p "$HOME/.agents/skills"
+git clone --branch v0.1.2 --depth 1 https://github.com/AlexanderSVI/website-asset-discovery.git "$HOME/.agents/skills/website-asset-discovery"
+python3 -m venv "$HOME/.agents/skills/website-asset-discovery/.venv"
+"$HOME/.agents/skills/website-asset-discovery/.venv/bin/python" -m pip install -r "$HOME/.agents/skills/website-asset-discovery/requirements-runtime.txt"
+```
+
+Start a new Codex session if the Skill does not appear. The macOS implementation has one independently reported Codex run; broader macOS compatibility remains to be verified.
 ### Claude Code on Windows
 
 ```powershell
@@ -78,11 +96,11 @@ git clone 'https://github.com/AlexanderSVI/website-asset-discovery.git' (Join-Pa
 
 Claude Code discovers user-level Skills from `~/.claude/skills/<skill-name>/SKILL.md`. If the Skill does not appear, start a new Claude Code session. Invoke it as `/website-asset-discovery`.
 
-The Skill was installed and discovered on macOS in checks by two users. Those checks did not run WAD. WAD runtime execution on macOS is unsupported by the current Windows-only Executor.
+Skill installation and discovery were previously checked on macOS in Codex and Claude Code. A subsequent independent Codex run used the macOS adaptation. Claude Code runtime execution remains unverified.
 
 ## Python requirements
 
-Use Windows and CPython 3.11 or later. WAD runtime execution has been verified in Codex Desktop on Windows. Runtime execution in Claude Code has not been verified. macOS and Linux runtimes are unsupported by the current Executor.
+Use Windows or macOS and CPython 3.11 or later. WAD runtime execution has been verified in Codex Desktop on Windows. An independently adapted copy completed one Codex run on macOS. Runtime execution in Claude Code and Linux is not verified; Linux is unsupported. The commands in this section apply to Windows; see the macOS installation steps above.
 
 Create an isolated Python environment inside the installed Skill directory and install the runtime dependency:
 
@@ -98,7 +116,7 @@ For Claude Code on Windows, set `$skillRoot` to `$HOME\.claude\skills\website-as
 
 The public Skill package was installed on a separate Windows computer. On Windows with CPython 3.13.14 and HTTPX 0.28.1, the WAD test suite passed 86 tests and the Executor test suite passed 31 tests. After the TLS 1.2 test-fixture update, the five affected HTTPS fixture tests passed. These tests use local fixtures and do not survey public websites.
 
-The macOS checks confirmed Skill installation and discovery only. They did not verify WAD runtime execution.
+On November 15, 2026, a separate tester reported local HTTPS, timeout, and parent-process termination checks for a macOS-adapted Executor and ran one static site inspection in Codex on macOS (Python 3.12.14). The run returned COMPLETE. This was an adapted local copy; the full Mac test suite and release v0.1.2 installation have not yet been independently verified.
 
 ## Dependencies and licenses
 

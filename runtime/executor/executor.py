@@ -11,9 +11,11 @@ import json
 import math
 import multiprocessing
 from multiprocessing.connection import wait
+import os
 from pathlib import Path
 import shutil
 import ssl
+import sys
 import tempfile
 import threading
 import time
@@ -209,10 +211,18 @@ def _decoded_blocks(response, block, target, send):
         raise ValueError("incomplete_gzip")
 
 
+def _exit_on_parent_death(parent_sentinel):
+    wait([parent_sentinel])
+    os._exit(1)
+
+
 def _worker(connection, cafile):
+    if sys.platform == "darwin":
+        parent = multiprocessing.parent_process()
+        threading.Thread(target=_exit_on_parent_death, args=(parent.sentinel,), daemon=True).start()
     try:
-        # The parent assigns the Job before sending boot. Parent death before this
-        # barrier closes the Pipe; no HTTP request can have started.
+        # The parent assigns the Job before sending boot. On macOS, the watchdog monitors
+        # the parent before the barrier opens.
         if connection.recv() != {"action": "boot"}:
             return
         context = ssl.create_default_context(cafile=cafile)
@@ -334,9 +344,9 @@ def recover_prefix(body_path, metadata_path):
 
 
 class SiteWorker:
-    """Baseline lifecycle with startup barrier and Windows parent-death containment."""
+    """Worker startup, deadlines, and platform-specific parent-death containment."""
     def __init__(self, cafile=None):
-        self.job, self.connection, self.process = Job(), None, None
+        self.job = None if sys.platform == "darwin" else Job()
         ctx = multiprocessing.get_context("spawn")
         parent, child = ctx.Pipe()
         self.connection = parent
@@ -345,20 +355,27 @@ class SiteWorker:
         try:
             self.process.start()
             child.close()
-            self.job.assign(self.process.pid)
+            if self.job is not None:
+                self.job.assign(self.process.pid)
             parent.send({"action": "boot"})
             if not parent.poll(10) or parent.recv().get("event") != "ready":
                 raise RuntimeError("worker startup failed")
             self.ready = time.monotonic_ns()
         except BaseException:
             child.close()
-            self.job.close()
+            self._stop_worker()
             if self.process.pid is not None:
                 if self.process.is_alive():
                     self.process.terminate()
                 self.process.join(2)
             parent.close()
             raise
+
+    def _stop_worker(self):
+        if self.job is not None:
+            self.job.close()
+        elif self.process.pid is not None and self.process.is_alive():
+            self.process.kill()
 
     def request(self, command, started, deadline, reserve):
         cutoff = deadline - round(reserve*NS)
@@ -372,11 +389,14 @@ class SiteWorker:
                 signalled = bool(wait([self.process.sentinel], max(0, (deadline-time.monotonic_ns())/NS)))
                 sentinel = time.monotonic_ns() if signalled else None
                 if signalled:
-                    self.process.join(0)
+                    # On macOS the sentinel can be readable just before waitpid
+                    # can reap the process. Keep the original hard deadline.
+                    reap_timeout = max(0, (deadline-time.monotonic_ns())/NS) if sys.platform == "darwin" else 0
+                    self.process.join(reap_timeout)
                 joined = time.monotonic_ns()
                 timely = signalled and sentinel < deadline and joined < deadline and not self.process.is_alive()
                 if self.process.is_alive():
-                    self.job.close()
+                    self._stop_worker()
                     self.process.join(2)
                 return {**headers, **last, "reason": "timeout", "error_kind": "timeout", "forced": True,
                         "timely": timely, "started": started, "deadline": deadline, "terminate": called,
@@ -417,7 +437,7 @@ class SiteWorker:
         except (EOFError, OSError):
             pass
         finally:
-            self.job.close()
+            self._stop_worker()
             self.process.join(2)
             self.connection.close()
         if self.process.is_alive():
